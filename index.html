@@ -122,6 +122,26 @@
     background:linear-gradient(160deg, var(--btint2), var(--btint) 42%, var(--paper));
     border-radius:12px;padding:24px;border:1px solid rgba(0,0,0,.05);
   }
+  .backcover.has-cover{position:relative;overflow:hidden;border:none;background:#1a1016;color:#f1e9df}
+  .backcover .bc-bg{position:absolute;inset:0;background-size:cover;background-position:center;filter:blur(34px) brightness(.45) saturate(1.35);transform:scale(1.2);z-index:0}
+  .backcover .bc-tint{position:absolute;inset:0;background:linear-gradient(180deg,rgba(18,10,16,.5),rgba(18,10,16,.86));z-index:0}
+  .backcover.has-cover > .detail, .backcover.has-cover > .backstrip, .backcover.has-cover > .move, .backcover.has-cover > .detail-actions{position:relative;z-index:1}
+  .backcover.has-cover .t-he{color:#fff}
+  .backcover.has-cover .t-en{color:rgba(243,237,221,.8)}
+  .backcover.has-cover .author{color:#f1e9df}
+  .backcover.has-cover .author .en{color:rgba(243,237,221,.72)}
+  .backcover.has-cover .year{background:rgba(255,255,255,.16);color:#fff}
+  .backcover.has-cover .blurb{color:#eadfd4}
+  .backcover.has-cover .blurb-head .lbl,.backcover.has-cover .blurb-head .tick{color:var(--gold-soft);background:var(--gold-soft)}
+  .backcover.has-cover .blurb-head .lbl{background:transparent}
+  .backcover.has-cover .backstrip{border-top-color:rgba(255,255,255,.18);color:rgba(243,237,221,.7)}
+  .backcover.has-cover .backstrip .bars{color:rgba(255,255,255,.4)}
+  .backcover.has-cover .move span{color:rgba(243,237,221,.72)}
+  .backcover.has-cover .move button{background:rgba(255,255,255,.1);color:#e9ddc9;border-color:rgba(255,255,255,.2)}
+  .backcover.has-cover .move button.on{background:var(--gold-soft);color:#211a12;border-color:var(--gold-soft)}
+  .backcover.has-cover .detail-actions{border-top-color:rgba(255,255,255,.16)}
+  .backcover.has-cover .btn-edit{color:#f1e9df;border-color:rgba(255,255,255,.28)}
+  .backcover.has-cover .btn-remove{color:#ff9b9b;border-color:rgba(255,155,155,.4)}
   .detail{display:flex;gap:22px;flex-wrap:wrap}
   .cover-wrap{flex:0 0 168px}
   .cover{width:168px;height:250px;border-radius:4px;object-fit:cover;
@@ -221,8 +241,8 @@
 <div class="wrap">
   <header class="top">
     <div class="brand">
-      <span class="eyebrow">הספרייה שלי</span>
-      <h1>מדף הספרים</h1>
+      <span class="eyebrow">הדוקטורט שלי</span>
+      <h1>ספריית המחקר</h1>
       <span class="count" id="count">—</span>
     </div>
     <div class="top-actions">
@@ -232,11 +252,6 @@
       <input type="file" id="importFile" accept="application/json" hidden />
     </div>
   </header>
-  <div class="libtabs" id="libtabs">
-    <button data-lib="all" class="on">כל הספרייה</button>
-    <button data-lib="phd">דוקטורט</button>
-    <button data-lib="personal">אישי</button>
-  </div>
   <div class="shelves" id="shelves"></div>
 </div>
 
@@ -262,20 +277,11 @@
       <div class="status" id="searchStatus"></div>
 
       <div class="field">
-        <label>לאיזו ספרייה</label>
-        <div class="seg" id="libSeg">
-          <button type="button" data-lib="phd">דוקטורט</button>
-          <button type="button" data-lib="personal">אישי</button>
-        </div>
-      </div>
-      <div class="field">
         <label>לאיזה מדף</label>
         <div class="seg" id="shelfSeg">
           <button type="button" data-shelf="articles">מאמר</button>
           <button type="button" data-shelf="read_research">קראתי למחקר</button>
           <button type="button" data-shelf="unread_research">לא קראתי למחקר</button>
-          <button type="button" data-shelf="toread">ספר לקריאה</button>
-          <button type="button" data-shelf="read">כבר קראתי</button>
         </div>
       </div>
 
@@ -379,8 +385,30 @@
   function hueHash(str){var h=0;str=str||"x";for(var i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))>>>0;return h%360;}
   // each item's signature colour — its themePrimary if set, else a unique hue. Used for BOTH spine and back cover.
   function signatureBg(b){
+    if(b.coverColor && toRgb(b.coverColor)) return b.coverColor;
     if(b.themePrimary && toRgb(b.themePrimary)) return b.themePrimary;
     return toHex(hslToHex(hueHash(b.titleHe||b.titleEn||b.id), 42, 38));
+  }
+  function dominantColor(url){
+    return new Promise(function(resolve){
+      try{
+        var img=new Image(); var src=url;
+        if(!/^data:/.test(url)){ img.crossOrigin="anonymous"; src="https://wsrv.nl/?url="+encodeURIComponent(url)+"&w=72&output=jpg"; }
+        img.onload=function(){
+          try{
+            var s=32,cv=document.createElement("canvas");cv.width=s;cv.height=s;var ctx=cv.getContext("2d");ctx.drawImage(img,0,0,s,s);
+            var d=ctx.getImageData(0,0,s,s).data,map={},bestK=null,bestC=0,ar=0,ag=0,ab=0,an=0;
+            for(var i=0;i<d.length;i+=4){var R=d[i],G=d[i+1],B=d[i+2];if(d[i+3]<128)continue;ar+=R;ag+=G;ab+=B;an++;
+              var mx=Math.max(R,G,B),mn=Math.min(R,G,B),sat=mx-mn;var w=1+sat/48;if(mx<38||mn>224)w*=0.25;
+              var key=(R>>5)+","+(G>>5)+","+(B>>5);map[key]=(map[key]||0)+w;if(map[key]>bestC){bestC=map[key];bestK=key;}}
+            if(bestK){var p=bestK.split(",");resolve(toHex({r:p[0]*32+16,g:p[1]*32+16,b:p[2]*32+16}));}
+            else if(an)resolve(toHex({r:ar/an,g:ag/an,b:ab/an}));else resolve(null);
+          }catch(e){resolve(null);}
+        };
+        img.onerror=function(){resolve(null);};
+        img.src=src;
+      }catch(e){resolve(null);}
+    });
   }
   function shade(hex,amt){var c=hex.replace("#","");if(c.length===3)c=c.split("").map(function(x){return x+x;}).join("");
     var n=parseInt(c,16),r=(n>>16)+amt,g=((n>>8)&255)+amt,b=(n&255)+amt;
@@ -457,49 +485,53 @@
   var readOpen=false;
   var currentId=null;
 
-  function spineEl(b){
-    var bg=signatureBg(b);
+  function paintStrip(s,bg){
     var rgb=toRgb(bg)||{r:107,g:86,b:54};
     var txt=lum(rgb)>0.56?"#211a12":"#f3ead6";
+    s.style.background="linear-gradient(180deg,"+bg+", "+shade(bg,-20)+")";
+    s.style.color=txt;
+    var band=s.querySelector(".bband"); if(band)band.style.background=shade(bg,-42);
+  }
+  function spineEl(b){
+    var bg=signatureBg(b);
     var titleTxt=b.titleHe||b.titleEn||"ללא כותרת";
     var authTxt=b.authorHe||b.authorEn||"";
     var s=el("div","bstrip");
-    s.style.background="linear-gradient(180deg,"+bg+", "+shade(bg,-20)+")";
-    s.style.color=txt;
     s.setAttribute("tabindex","0");s.setAttribute("role","button");
     s.setAttribute("aria-label","פתח את "+titleTxt+(authTxt?" מאת "+authTxt:""));
     s.title=titleTxt+(authTxt?" — "+authTxt:"");
-    var band=el("div","bband"); band.style.background=shade(bg,-42); s.appendChild(band);
+    var band=el("div","bband"); s.appendChild(band);
     var lbl=el("div","blabel");
     var t=el("span","btitle"); t.textContent=titleTxt; lbl.appendChild(t);
     if(authTxt){ var au=el("span","bauthor"); au.textContent="· "+authTxt; lbl.appendChild(au); }
     if(b.read){ var rd=el("span","bread"); rd.textContent="✓"; lbl.appendChild(rd); }
     s.appendChild(lbl);
+    paintStrip(s,bg);
+    if(b.coverUrl && !b.coverColor){
+      dominantColor(b.coverUrl).then(function(col){ if(col){ b.coverColor=col; paintStrip(s,col); saveBook(b); } });
+    }
     s.addEventListener("click",function(){openDetail(b.id);});
     s.addEventListener("keydown",function(ev){if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();openDetail(b.id);}});
     return s;
   }
 
   var readFilter="all";
-  var libFilter="all";
+  var libFilter="phd";
   function passesFilter(b){ return readFilter==="all" || (readFilter==="read"?!!b.read:!b.read); }
-  function passesLib(b){ return libFilter==="all" || b.collection===libFilter; }
-  function shelfInLib(sh){ return libFilter==="all" || sh.lib===libFilter; }
+  function passesLib(b){ return libFilter==="all" || b.collection==="phd" || (b.shelf==="articles"||b.shelf==="read_research"||b.shelf==="unread_research"); }
+  function shelfInLib(sh){ return sh.lib==="phd"; }
 
   async function render(){
     var all=await allBooks();
     var books=all.filter(passesLib);
     var total=books.length;
     var readCount=books.filter(function(b){return b.read;}).length;
-    var libName = libFilter==="phd"?"דוקטורט":(libFilter==="personal"?"אישי":"הספרייה");
-    $("#count").textContent = total? (total+" פריטים ב"+libName+" · "+readCount+" נקראו") : (libFilter==="all"?"הספרייה עוד ריקה":"אין עדיין פריטים ב"+libName);
+    $("#count").textContent = total? (total+" פריטים · "+readCount+" נקראו למחקר") : "הספרייה עוד ריקה";
     var host=$("#shelves");host.innerHTML="";
 
     if(!total){
       var e=el("div","empty");
-      e.innerHTML= libFilter==="all"
-        ? 'עדיין ריק. לחץ <b>“+ הוסף”</b>, הקלד שם ספר/מאמר או סופר — הפרטים יימשכו לבד.'
-        : 'אין עדיין פריטים בספריית <b>'+libName+'</b>.';
+      e.innerHTML='עדיין ריק. לחץ <b>“+ הוסף”</b>, הקלד שם מאמר/ספר או מחבר — הפרטים יימשכו לבד.';
       host.appendChild(e);return;
     }
 
@@ -556,8 +588,10 @@
       authorLine+='</p>';
     }
     var footAuthor=esc(b.authorEn||b.authorHe||"");
+    var coverMode=!!b.coverUrl;
     body.innerHTML=
-      '<div class="backcover" id="bc">'+
+      '<div class="backcover'+(coverMode?' has-cover':'')+'" id="bc">'+
+        (coverMode?'<div class="bc-bg" style="background-image:url('+esc(b.coverUrl)+')"></div><div class="bc-tint"></div>':'')+
         '<div class="detail">'+
           '<div class="cover-wrap">'+coverHtml+'</div>'+
           '<div class="meta">'+

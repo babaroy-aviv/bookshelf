@@ -204,6 +204,11 @@
     border:1px solid var(--line);background:#fbf6ea;color:var(--ink-soft);font-weight:600}
   .seg button.on{background:var(--oxblood);color:#f6ecd9;border-color:var(--oxblood)}
   .status{font-size:13px;min-height:18px;color:var(--ink-soft);margin:2px 0 10px}
+  .results{display:flex;flex-direction:column;gap:6px;margin:2px 0 10px;max-height:300px;overflow:auto}
+  .res{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;cursor:pointer;background:#faf5e9}
+  .res:hover{background:#f0e7d5}
+  .res .rt{font-weight:700;font-size:13px;color:var(--ink);line-height:1.25}
+  .res .ra{font-size:11.5px;color:var(--ink-soft)}
   .status.err{color:var(--oxblood)} .status.ok{color:#3f6b3a}
   .form-actions{display:flex;gap:8px;margin-top:8px;padding-top:14px;border-top:1px solid var(--line)}
   .ltr{direction:ltr;text-align:left}
@@ -267,14 +272,15 @@
     <div class="card-head"><h2 id="formTitle">הוסף</h2><button class="x" data-close>&times;</button></div>
     <div class="card-body">
       <div class="field">
-        <label>חיפוש — שם ספר / מאמר / סופר</label>
+        <label>חיפוש מאמר — כותרת או מחבר (Crossref)</label>
         <div class="search-row">
-          <input type="text" id="q" placeholder="לדוגמה: אני מלאלה  /  הרלן קובן" />
-          <button class="btn btn-primary" id="searchBtn">חפש ומלא</button>
+          <input type="text" id="q" placeholder="לדוגמה: Zigon moral breakdown  /  Ball performativity" />
+          <button class="btn btn-primary" id="searchBtn">חפש מאמר</button>
           <button class="btn btn-quiet" id="googleBtn">חפש בגוגל</button>
         </div>
       </div>
       <div class="status" id="searchStatus"></div>
+      <div class="results" id="searchResults"></div>
 
       <div class="field">
         <label>לאיזה מדף</label>
@@ -742,7 +748,7 @@
     formPrimary=book?(book.themePrimary||""):"";
     formAccent=book?(book.themeAccent||""):"";
     $("#formTitle").textContent=book?"ערוך פרטים":"הוסף";
-    $("#q").value="";$("#searchStatus").textContent="";$("#searchStatus").className="status";
+    $("#q").value="";$("#searchStatus").textContent="";$("#searchStatus").className="status";var _sr=$("#searchResults");if(_sr)_sr.innerHTML="";
     $("#titleHe").value=book?book.titleHe||"":"";
     $("#titleEn").value=book?book.titleEn||"":"";
     $("#authorHe").value=book?book.authorHe||"":"";
@@ -782,35 +788,44 @@
     setIfEmpty("#year",o.year); setIfEmpty("#blurb",o.blurb); setIfEmpty("#coverUrl",o.cover);
   }
 
+  async function crossrefSearch(q){
+    var url="https://api.crossref.org/works?rows=12&select="+encodeURIComponent("DOI,title,author,container-title,issued,type")+"&query="+encodeURIComponent(q);
+    var r=await fetch(url); if(!r.ok) throw new Error("cr"); var d=await r.json();
+    var items=(d.message&&d.message.items)||[];
+    return items.map(function(it){
+      var title=(it.title&&it.title[0])||"";
+      var authors=(it.author||[]).map(function(a){return [a.given,a.family].filter(Boolean).join(" ");}).filter(Boolean);
+      var famShort=(it.author||[]).map(function(a){return a.family;}).filter(Boolean).slice(0,4).join(", ");
+      var yp=it.issued&&it.issued["date-parts"]&&it.issued["date-parts"][0]&&it.issued["date-parts"][0][0];
+      var journal=(it["container-title"]&&it["container-title"][0])||"";
+      return {title:title,authors:authors,authorsShort:famShort,year:yp?String(yp):"",journal:journal,doi:it.DOI||""};
+    }).filter(function(x){return x.title;});
+  }
+
   $("#searchBtn").addEventListener("click",async function(){
     var q=$("#q").value.trim();if(!q){$("#q").focus();return;}
-    var btn=$("#searchBtn");btn.disabled=true;setStatus("מחפש פרטים…","");
-    var got=false, sources=[];
-
-    // 1) Google Books — metadata + cover (public, works in most environments incl. standalone)
-    try{ var g=await fetchGoogleBooks(q); if(g){applyBasic(g);got=true;sources.push("Google Books");} }catch(e){}
-    // 2) Open Library — fill any gaps
-    if(!$("#coverUrl").value.trim() || !$("#year").value.trim() || (!$("#titleHe").value.trim()&&!$("#titleEn").value.trim())){
-      try{ var o=await fetchOpenLibrary(q); if(o){applyBasic(o);got=true;if(sources.indexOf("Open Library")<0)sources.push("Open Library");} }catch(e){}
-    }
-    // 3) Claude enrichment — 2nd-language title, Hebrew blurb, theme colors (best inside the chat)
-    setStatus(got?("נמצא ב-"+sources.join(", ")+" · משלים…"):"מנסה חיפוש מעמיק…","");
-    var info=null;
-    try{ info=await fetchBookInfo(q,true); }catch(e){ try{ info=await fetchBookInfo(q,false); }catch(e2){} }
-    if(info){
-      setIfEmpty("#titleHe",info.titleHe); setIfEmpty("#titleEn",info.titleEn);
-      setIfEmpty("#authorHe",info.authorHe); setIfEmpty("#authorEn",info.authorEn);
-      setIfEmpty("#year",info.year);
-      var cur=$("#blurb").value.trim();
-      if(info.blurb && (!cur || (!isHeb(cur)&&isHeb(info.blurb)))) $("#blurb").value=info.blurb;
-      if(info.primary&&toRgb(info.primary))formPrimary=info.primary;
-      if(info.accent&&toRgb(info.accent))formAccent=info.accent;
-      got=true; sources.push("חיפוש מעמיק");
-    }
-
-    if(got) setStatus("נמצאו פרטים ✓  ("+sources.join(", ")+") — בדוק ושמור.","ok");
-    else setStatus("לא הצלחתי למשוך אוטומטית. מלא ידנית או לחץ “חפש בגוגל”.","err");
-    btn.disabled=false;
+    var btn=$("#searchBtn");btn.disabled=true;setStatus("מחפש מאמרים…","");
+    var box=$("#searchResults");box.innerHTML="";
+    try{
+      var list=await crossrefSearch(q);
+      if(!list.length){ setStatus("לא נמצאו מאמרים — נסה ניסוח אחר, או “חפש בגוגל”.","err"); return; }
+      setStatus("בחר את המאמר הנכון:","ok");
+      list.forEach(function(v){
+        var row=el("div","res");
+        var meta=[v.authorsShort,v.journal,v.year].filter(Boolean).join(" · ");
+        row.innerHTML='<div class="rt">'+esc(v.title)+'</div><div class="ra">'+esc(meta)+'</div>';
+        row.addEventListener("click",function(){
+          setIfEmpty("#titleEn",v.title);
+          setIfEmpty("#authorEn",v.authors.join(", "));
+          setIfEmpty("#year",v.year);
+          var cite=[v.journal,v.year].filter(Boolean).join(", ")+(v.doi?" · DOI: "+v.doi:"");
+          if(!$("#blurb").value.trim()) $("#blurb").value=cite;
+          box.innerHTML=""; setStatus("נבחר ✓ הוסף כותרת/מחבר בעברית ומילת מפתח, ואז שמור.","ok");
+        });
+        box.appendChild(row);
+      });
+    }catch(e){ setStatus("החיפוש לא זמין כרגע — נסה “חפש בגוגל” או מלא ידנית.","err"); }
+    finally{ btn.disabled=false; }
   });
 
   async function gbCover(q, lang){
